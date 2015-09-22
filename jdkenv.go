@@ -28,7 +28,7 @@ func main() {
 		switch args[0] {
 		case "init":
 			initialize()
-		case "list":
+		case "list", "versions":
 			list()
 		case "use":
 			if len(args) >= 2 {
@@ -37,7 +37,7 @@ func main() {
 			} else {
 				fmt.Println("please select jdk directory")
 			}
-		case "current":
+		case "current", "version":
 			current()
 		default:
 			fmt.Println("print help")
