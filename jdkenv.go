@@ -12,7 +12,13 @@ import (
 	"strings"
 )
 
+const VERSION = `0.0.2`
+
 var (
+	version       = flag.Bool("version", false, "display version information")
+	v             = flag.Bool("v", false, "display version information")
+	help          = flag.Bool("help", false, "display help information")
+	h             = flag.Bool("h", false, "display help information")
 	jdkdir        = homeDir() + "/.jdkenv/java"
 	macSystemJdk  = "/System/Library/Java/JavaVirtualMachines/"
 	macLibraryJdk = "/Library/Java/JavaVirtualMachines/"
@@ -21,6 +27,17 @@ var (
 func main() {
 	//var jdkdir = homeDir() + "/.jdkenv/java"
 	flag.Parse()
+
+	if *v || *version {
+		fmt.Printf("jdkenv %s\n", VERSION)
+		os.Exit(0)
+	}
+
+	if *h || *help {
+		fmt.Println("print help")
+		os.Exit(0)
+	}
+
 	args := flag.Args()
 	if len(args) == 0 {
 		fmt.Println("print help")
@@ -29,8 +46,8 @@ func main() {
 		case "init":
 			initialize()
 		case "list", "versions":
-			list()
-		case "use":
+			printList()
+		case "use", "set":
 			if len(args) >= 2 {
 				use(args[1])
 				return
@@ -38,9 +55,9 @@ func main() {
 				fmt.Println("please select jdk directory")
 			}
 		case "current", "version":
-			current()
+			fmt.Println(getCurrent())
 		default:
-			fmt.Println("print help")
+			fmt.Printf("not found: %s\n", args[0])
 		}
 	}
 
@@ -48,6 +65,8 @@ func main() {
 }
 
 func use(ver string) {
+	ver = getSearchedJdkName(ver)
+
 	if runtime.GOOS == "darwin" {
 		macUse(ver)
 		return
@@ -62,6 +81,26 @@ func use(ver string) {
 
 	removeCurrnetSymlink(javahomesymlink)
 	makeJavahomeSymlink(jdkpath, javahomesymlink)
+}
+
+func getSearchedJdkName(ver string) string {
+	jdkList := getList()
+	if haveAJdk(jdkList, ver) {
+		for _, value := range jdkList {
+			if strings.Contains(value, ver) { ver = value }
+		}
+	}
+
+	return ver
+}
+
+func haveAJdk(jdkList []string, ver string) bool {
+	count := 0
+	for _, value := range jdkList {
+		if strings.Contains(value, ver) { count++ }
+	}
+
+	return count == 1
 }
 
 func macUse(ver string) {
@@ -97,52 +136,64 @@ func makeJavahomeSymlink(jdkpath, javahomesymlink string) {
 	}
 }
 
-func list() {
-	if runtime.GOOS == "darwin" {
-		macJdkList()
-		return
-	}
-	dirs, err := ioutil.ReadDir(jdkdir)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	if len(dirs) == 0 {
-		fmt.Println("jdk isn't exists at " + jdkdir)
-		return
-	}
-
-	for _, value := range dirs {
-		if strings.HasPrefix(value.Name(), "jdk") {
-			fmt.Println(value.Name())
+func printList()  {
+	for _, value := range getList() {
+		if getCurrent() == value {
+			fmt.Println("* " + value)
+		} else {
+			fmt.Println("  " + value)
 		}
 	}
 }
 
-func macJdkList() {
-	printMacJdk(macSystemJdk)
-	printMacJdk(macLibraryJdk)
+func getList() []string {
+	if runtime.GOOS == "darwin" {
+		return getMacJdkList()
+	}
+	dirs, err := ioutil.ReadDir(jdkdir)
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+
+	if len(dirs) == 0 {
+		fmt.Println("jdk isn't exists at " + jdkdir)
+		return nil
+	}
+
+	slice := make([]string, 0)
+	for _, value := range dirs {
+		if strings.HasPrefix(value.Name(), "jdk") {
+			slice = append(slice, value.Name())
+		}
+	}
+
+	return slice
 }
 
-func printMacJdk(dirPath string) {
+func getMacJdkList() []string {
+	slice := make([]string, 0)
+	slice = append(slice, getJdkList(macSystemJdk)...)
+	slice = append(slice, getJdkList(macLibraryJdk)...)
+	return slice
+}
+
+func getJdkList(dirPath string) []string {
 	dirs, err := ioutil.ReadDir(dirPath)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return nil
 	}
 
-	for _, value := range dirs {
-		fmt.Println(value.Name())
-	}
+	slice := make([]string, 0)
+	for _, value := range dirs { slice = append(slice, value.Name()) }
+
+	return slice
 }
 
-func current() {
+func getCurrent() string {
 	javahomesymlink := jdkdir + "/current"
-	if !exist(javahomesymlink) {
-		fmt.Println("jdkenv not used")
-		return
-	}
+	if !exist(javahomesymlink) { return "jdkenv not used" }
 
 	dest, err := os.Readlink(javahomesymlink)
 	if err != nil {
@@ -150,16 +201,18 @@ func current() {
 		os.Exit(1)
 	}
 
+	currentJdkVersion := ""
 	switch runtime.GOOS {
 	case "darwin":
 		{
 			splitedpath := strings.Split(dest, string(os.PathSeparator))
-			fmt.Println(splitedpath[len(splitedpath)-3])
+			currentJdkVersion = splitedpath[len(splitedpath)-3]
 		}
 	default:
-		fmt.Println(filepath.Base(dest))
+		currentJdkVersion = filepath.Base(dest)
 	}
 
+	return currentJdkVersion
 }
 
 func initialize() {
